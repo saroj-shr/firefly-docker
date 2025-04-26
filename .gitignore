@@ -1,0 +1,23 @@
+# Ignore all env files in the env folder...
+env/.env*
+# ...except for sample files
+!env/.env.sample*
+
+# Docker-related ignore rules
+docker-compose.override.yml
+
+# Persistent volumes (do not version control data)
+volumes/
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+*.tmp
+*.swp
+.DS_Store
+
+# IDE and editor settings
+.vscode/
+.idea/

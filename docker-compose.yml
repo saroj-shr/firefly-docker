@@ -1,0 +1,73 @@
+services:
+  firefly-db:
+    image: postgres:16-alpine
+    env_file: ./env/.env.db
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U firefly" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - firefly_net
+
+  firefly:
+    image: fireflyiii/core:latest
+    env_file:
+      - ./env/.env.firefly
+    depends_on:
+      firefly-db:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://127.0.0.1:8080" ]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    volumes:
+      - firefly_data:/var/www/html/storage
+      - firefly_upload:/var/www/html/public/uploads
+    networks:
+      - firefly_net
+  firefly-cron:
+    #
+    # To make this work, set STATIC_CRON_TOKEN in your .env file or as an environment variable.
+    # The STATIC_CRON_TOKEN must be *exactly* 32 characters long.
+    # Replace "REPLACEME" below with appropriate values:
+    #   - For TZ: replace with your desired timezone (e.g., "Europe/London")
+    #   - For the cron URL: replace with your STATIC_CRON_TOKEN.
+    #
+    image: alpine
+    container_name: firefly-cron
+    depends_on:
+      firefly:
+        condition: service_healthy
+      firefly-db:
+        condition: service_healthy
+    command: >
+      sh -c "
+        apk add --no-cache tzdata && \
+        # Set your timezone; replace REPLACEME with your timezone, e.g., 'Europe/London'
+        export TZ=REPLACEME && \
+        ln -snf /usr/share/zoneinfo/REPLACEME /etc/localtime && \
+        # Configure cron job; replace REPLACEME with your STATIC_CRON_TOKEN (32 characters)
+        echo \"* * * * * wget -qO- http://firefly:8080/api/v1/cron/REPLACEME\" | crontab - && \
+        crond -f -L /dev/stdout
+      "
+    restart: always
+    networks:
+      - firefly_net
+
+networks:
+  firefly_net:
+
+
+volumes:
+  firefly_data:
+  firefly_upload:
+  db_data:

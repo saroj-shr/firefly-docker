@@ -1,0 +1,89 @@
+services:
+  firefly-db:
+    image: postgres:16-alpine
+    env_file: ./env/.env.db
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U firefly" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - firefly_net
+    restart: unless-stopped
+
+  firefly:
+    image: fireflyiii/core:latest
+    env_file:
+      - ./env/.env.firefly
+    depends_on:
+      firefly-db:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://127.0.0.1:8080" ]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    volumes:
+      - firefly_data:/var/www/html/storage
+      - firefly_upload:/var/www/html/public/uploads
+    networks:
+      - firefly_net
+      # - tailscale_net
+  firefly-cron:
+    image: alpine
+    restart: always
+    container_name: firefly-cron
+    env_file: ./env/.env.firefly
+    depends_on:
+      firefly:
+        condition: service_healthy
+      firefly-db:
+        condition: service_healthy
+    command: >
+      sh -c "
+        apk add --no-cache tzdata && \
+        export TZ=Asia\/Kathmandu && \
+        ln -snf /usr/share/zoneinfo/Asia\/Kathmandu /etc/localtime && \
+        echo \"0 * * * * wget -qO- http://firefly:8080/api/v1/cron/U9StzrzoUz5KEVMjIomcPH5rTEgGkyacQ\" | crontab - && \
+        crond -f -L /dev/stdout
+      "
+    networks:
+      - firefly_net
+
+  # tailscale:
+  #   image: tailscale/tailscale:latest
+  #   container_name: tailscale
+  #   depends_on:
+  #     firefly:
+  #       condition: service_healthy
+  #   env_file:
+  #     - ./env/.env.tailscale
+  #   cap_add:
+  #     - NET_ADMIN
+  #     - SYS_MODULE
+  #   volumes:
+  #     - ./config/serve-config.json:/config/serve-config.json
+  #     - tailscale_state:/var/lib/tailscale
+  #     - /dev/net/tun:/dev/net/tun
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8080:8080" # Adjust the host port as needed
+  #   networks:
+  #     - tailscale_net
+
+networks:
+  firefly_net:
+  # tailscale_net:
+
+
+volumes:
+  firefly_data:
+  firefly_upload:
+  db_data:
+  # tailscale_state:
